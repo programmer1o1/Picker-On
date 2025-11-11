@@ -5,11 +5,18 @@
 
 Replicated server-side aimbot from Interloper F for cs:s using vscript tho this will work on source games that are on tf2 branch or something lol
 it also includes sourcemod plugin as well lol
+
 ## Installation
 
-1. place `aimbot.nut` in `cstrike/scripts/vscripts/`
+### VScript Installation
+1. place `picker.nut` in `cstrike/scripts/vscripts/`
 2. open your game (cs:s or hl2dm or etc), create a server
-3. in console: `script_execute aimbot`
+3. in console: `script_execute picker.nut`
+
+### SourceMod Plugin Installation
+1. place `picker.smx` in `cstrike/addons/sourcemod/plugins/`
+2. restart your server or load the plugin with `sm plugins load picker` in console
+3. the plugin will automatically load on server start
 
 ## Usage
 
