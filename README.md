@@ -1,5 +1,5 @@
 # Picker
-*The reason why I am not gonna this in actual multiplayer server...*
+*The reason why I am not gonna test this in actual multiplayer server...*
 
 <img src="https://github.com/user-attachments/assets/91968a32-1602-4d92-97b5-cdcfbcbf595c" alt="whoa the picker?!" width="600">
 
@@ -20,8 +20,23 @@ it also includes sourcemod plugin as well which I think it will work on source g
 
 ## Usage
 
-### Console commands 
-- `picker_toggle` - turn on/off 
-- `picker_next` - cycle through targets manually
+### Console commands for VScript
+```
+picker_toggle - turn on/off 
+picker_next - cycle through targets manually
+```
+
+### Console commands for VScript
+```
+sm_giveaimbot - give aimbot to someone (why tho)
+sm_aimbot_distance - max distance for aimbot
+sm_aimbot_smoothing - smoothing amount
+```
+
+### Chat commands for SourceMod
+```
+!aimbot or /aimbot or !picker or /picker - toggle on/off
+!nexttarget or /nexttarget - cycle through targets manually
+```
   
 you can bind them and that's basically it! have fun!
