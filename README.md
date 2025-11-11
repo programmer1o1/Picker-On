@@ -4,7 +4,7 @@
 <img src="https://github.com/user-attachments/assets/91968a32-1602-4d92-97b5-cdcfbcbf595c" alt="whoa the picker?!" width="600">
 
 Replicated server-side aimbot from Interloper F for cs:s using vscript tho this will work on source games that are on tf2 branch or something lol
-it also includes sourcemod plugin as well lol
+it also includes sourcemod plugin as well which I think it will work on source games that supports sourcemod? Maybe... lol
 
 ## Installation
 
