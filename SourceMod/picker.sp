@@ -15,6 +15,8 @@ bool g_manual[MAXPLAYERS + 1];
 ArrayList g_targets[MAXPLAYERS + 1];
 int g_targetidx[MAXPLAYERS + 1];
 float g_manualtime[MAXPLAYERS + 1];
+bool g_teamplay = false;
+bool g_teamplayDetected = false;
 
 public Plugin myinfo = {
     name = "Picker",
@@ -48,6 +50,42 @@ public void OnPluginStart() {
     }
 }
 
+public void OnMapStart() {
+    g_teamplayDetected = false;
+}
+
+bool DetectTeamplay() {
+    if (g_teamplayDetected)
+        return g_teamplay;
+    
+    // count distinct teams with players
+    int teamCounts[32];
+    int numTeams = 0;
+    
+    for (int i = 1; i <= MaxClients; i++) {
+        if (IsValid(i) && IsPlayerAlive(i)) {
+            int team = GetClientTeam(i);
+            if (team >= 2) {
+                teamCounts[team]++;
+            }
+        }
+    }
+    
+    // count how many teams have players
+    for (int i = 2; i < sizeof(teamCounts); i++) {
+        if (teamCounts[i] > 0)
+            numTeams++;
+    }
+    
+    // if 2+ teams have players, it's teamplay
+    g_teamplay = (numTeams >= 2);
+    g_teamplayDetected = true;
+    
+    PrintToServer("[Picker] teamplay detected: %s", g_teamplay ? "true" : "false");
+    
+    return g_teamplay;
+}
+
 public void OnClientConnected(int client) {
     g_enabled[client] = false;
     g_target[client] = -1;
@@ -72,6 +110,8 @@ public void OnClientDisconnect(int client) {
 }
 
 public Action Event_RoundStart(Event event, const char[] name, bool dontBroadcast) {
+    g_teamplayDetected = false;
+    
     for (int i = 1; i <= MaxClients; i++) {
         g_target[i] = -1;
         g_manual[i] = false;
@@ -159,15 +199,19 @@ ArrayList BuildList(int client) {
     float pos[3];
     GetClientEyePosition(client, pos);
     float maxd = g_cvDist.FloatValue;
+    bool teamplay = DetectTeamplay();
     
-    // enemies
+    // enemies first
     for (int i = 1; i <= MaxClients; i++) {
         if (!IsValid(i) || !IsPlayerAlive(i) || i == client)
             continue;
         
         int t = GetClientTeam(i);
-        if (t <= 1 || t == team)
-            continue;
+        
+        if (teamplay) {
+            if (t <= 1 || t == team)
+                continue;
+        }
         
         float tpos[3];
         GetClientEyePosition(i, tpos);
@@ -179,23 +223,25 @@ ArrayList BuildList(int client) {
         list.Push(i);
     }
     
-    // teammates
-    for (int i = 1; i <= MaxClients; i++) {
-        if (!IsValid(i) || !IsPlayerAlive(i) || i == client)
-            continue;
-        
-        int t = GetClientTeam(i);
-        if (t <= 1 || t != team)
-            continue;
-        
-        float tpos[3];
-        GetClientEyePosition(i, tpos);
-        float dist = GetVectorDistance(pos, tpos);
-        
-        if (dist > maxd || !CanSee(client, i, tpos))
-            continue;
-        
-        list.Push(i);
+    // teammates (only in teamplay)
+    if (teamplay) {
+        for (int i = 1; i <= MaxClients; i++) {
+            if (!IsValid(i) || !IsPlayerAlive(i) || i == client)
+                continue;
+            
+            int t = GetClientTeam(i);
+            if (t <= 1 || t != team)
+                continue;
+            
+            float tpos[3];
+            GetClientEyePosition(i, tpos);
+            float dist = GetVectorDistance(pos, tpos);
+            
+            if (dist > maxd || !CanSee(client, i, tpos))
+                continue;
+            
+            list.Push(i);
+        }
     }
     
     // props
@@ -252,7 +298,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
         return Plugin_Continue;
     
     if (g_enabled[client]) {
-        SetHudTextParams(-1.0, 0.53, 0.5, 255, 160, 0, 255, 0, 0.0, 0.0, 0.0);
+        SetHudTextParams(-1.0, 0.53, 0.55, 255, 160, 0, 255, 0, 0.0, 0.0, 0.0);
         ShowSyncHudText(client, g_hud, "PICKER ON");
         
         if (IsPlayerAlive(client)) {
@@ -269,19 +315,31 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
                     
                     if (best != -1) {
                         bool curEnemy = false;
+                        bool teamplay = DetectTeamplay();
+                        
                         if (g_target[client] > 0 && g_target[client] <= MaxClients) {
                             int ct = GetClientTeam(g_target[client]);
                             int pt = GetClientTeam(client);
-                            if (ct != pt && ct > 1)
+                            
+                            if (teamplay) {
+                                if (ct != pt && ct > 1)
+                                    curEnemy = true;
+                            } else {
                                 curEnemy = true;
+                            }
                         }
                         
                         bool bestEnemy = false;
                         if (best > 0 && best <= MaxClients) {
                             int bt = GetClientTeam(best);
                             int pt = GetClientTeam(client);
-                            if (bt != pt && bt > 1)
+                            
+                            if (teamplay) {
+                                if (bt != pt && bt > 1)
+                                    bestEnemy = true;
+                            } else {
                                 bestEnemy = true;
+                            }
                         }
                         
                         if (bestEnemy && !curEnemy) {
@@ -333,7 +391,9 @@ bool IsValidTarget(int client, int ent) {
             return false;
         
         int t = GetClientTeam(ent);
-        if (t <= 1)
+        bool teamplay = DetectTeamplay();
+        
+        if (teamplay && t <= 1)
             return false;
         
         float tpos[3];
@@ -354,6 +414,7 @@ int GetBest(int client) {
     float pos[3];
     GetClientEyePosition(client, pos);
     float maxd = g_cvDist.FloatValue;
+    bool teamplay = DetectTeamplay();
     
     int bestEnemy = -1;
     int bestTeam = -1;
@@ -367,8 +428,6 @@ int GetBest(int client) {
             continue;
         
         int t = GetClientTeam(i);
-        if (t <= 1)
-            continue;
         
         float tpos[3];
         GetClientEyePosition(i, tpos);
@@ -377,15 +436,26 @@ int GetBest(int client) {
         if (dist > maxd || !CanSee(client, i, tpos))
             continue;
         
-        if (t != team) {
+        if (teamplay) {
+            if (t <= 1)
+                continue;
+            
+            if (t != team) {
+                if (dist < bestED) {
+                    bestED = dist;
+                    bestEnemy = i;
+                }
+            } else {
+                if (dist < bestTD) {
+                    bestTD = dist;
+                    bestTeam = i;
+                }
+            }
+        } else {
+            // ffa mode - everyone is enemy
             if (dist < bestED) {
                 bestED = dist;
                 bestEnemy = i;
-            }
-        } else {
-            if (dist < bestTD) {
-                bestTD = dist;
-                bestTeam = i;
             }
         }
     }

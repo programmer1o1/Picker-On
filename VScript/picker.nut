@@ -18,9 +18,76 @@ else
     ::g_first <- false;
 }
 
+if (!("g_teamplay" in getroottable()))
+{
+    ::g_teamplay <- null;
+}
+
 ::MAX_DIST <- 5000.0;
 ::SMOOTH <- 0.15;
 ::MANUAL_TIMEOUT <- 3.0;
+
+function DetectTeamplay()
+{
+    if (g_teamplay != null)
+        return g_teamplay;
+    
+    // check for different game modes
+    // cs:s and similar games have fixed teams (2 = T, 3 = CT)
+    // check if players have team numbers >= 2
+    local hasRealTeams = false;
+    local teamCounts = {};
+    
+    local p = null;
+    local count = 0;
+    while ((p = Entities.FindByClassname(p, "player")) != null)
+    {
+        if (p.IsAlive())
+        {
+            local t = p.GetTeam();
+            if (t >= 2)
+            {
+                if (!(t in teamCounts))
+                    teamCounts[t] <- 0;
+                teamCounts[t]++;
+                count++;
+            }
+        }
+    }
+    
+    // if we have multiple distinct teams with players, it's teamplay
+    local numTeams = 0;
+    foreach (team, cnt in teamCounts)
+    {
+        if (cnt > 0)
+            numTeams++;
+    }
+    
+    // if we have 2+ distinct teams, assume teamplay
+    // if everyone is on the same team or team 0/1, assume ffa
+    if (numTeams >= 2)
+    {
+        g_teamplay = true;
+        printl("teamplay detected: true (multiple teams found)");
+    }
+    else
+    {
+        // fallback to cvar check
+        try
+        {
+            local val = Convars.GetFloat("mp_teamplay");
+            g_teamplay = (val > 0);
+            printl("teamplay detected: " + g_teamplay + " (mp_teamplay cvar)");
+        }
+        catch (e)
+        {
+            g_teamplay = false;
+            printl("teamplay detected: false (single team or ffa)");
+        }
+    }
+    
+    return g_teamplay;
+}
 
 function InitPlayer(p)
 {
@@ -119,6 +186,7 @@ function BuildList(p)
     local list = [];
     local team = p.GetTeam();
     local pos = p.EyePosition();
+    local teamplay = DetectTeamplay();
     
     // enemies first
     local e = null;
@@ -128,8 +196,12 @@ function BuildList(p)
             continue;
         
         local t = e.GetTeam();
-        if (t <= 1 || t == team)
-            continue;
+        
+        if (teamplay)
+        {
+            if (t <= 1 || t == team)
+                continue;
+        }
         
         local tpos = e.EyePosition();
         local dist = (tpos - pos).Length();
@@ -140,24 +212,27 @@ function BuildList(p)
         list.append(e);
     }
     
-    // teammates
-    e = null;
-    while ((e = Entities.FindByClassname(e, "player")) != null)
+    // teammates (only in teamplay)
+    if (teamplay)
     {
-        if (e == p || !e.IsAlive())
-            continue;
-        
-        local t = e.GetTeam();
-        if (t <= 1 || t != team)
-            continue;
-        
-        local tpos = e.EyePosition();
-        local dist = (tpos - pos).Length();
-        
-        if (dist > MAX_DIST || !CanSee(p, e, tpos))
-            continue;
-        
-        list.append(e);
+        e = null;
+        while ((e = Entities.FindByClassname(e, "player")) != null)
+        {
+            if (e == p || !e.IsAlive())
+                continue;
+            
+            local t = e.GetTeam();
+            if (t <= 1 || t != team)
+                continue;
+            
+            local tpos = e.EyePosition();
+            local dist = (tpos - pos).Length();
+            
+            if (dist > MAX_DIST || !CanSee(p, e, tpos))
+                continue;
+            
+            list.append(e);
+        }
     }
     
     // props
@@ -192,7 +267,9 @@ function IsValid(p, e)
             return false;
         
         local t = e.GetTeam();
-        if (t <= 1)
+        local teamplay = DetectTeamplay();
+        
+        if (teamplay && t <= 1)
             return false;
         
         return CanSee(p, e, e.EyePosition());
@@ -205,6 +282,7 @@ function GetBest(p)
 {
     local team = p.GetTeam();
     local pos = p.EyePosition();
+    local teamplay = DetectTeamplay();
     
     local bestEnemy = null;
     local bestTeam = null;
@@ -220,8 +298,6 @@ function GetBest(p)
             continue;
         
         local t = e.GetTeam();
-        if (t <= 1)
-            continue;
         
         local tpos = e.EyePosition();
         local dist = (tpos - pos).Length();
@@ -229,20 +305,35 @@ function GetBest(p)
         if (dist > MAX_DIST || !CanSee(p, e, tpos))
             continue;
         
-        if (t != team)
+        if (teamplay)
         {
-            if (dist < bestEDist)
+            if (t <= 1)
+                continue;
+            
+            if (t != team)
             {
-                bestEDist = dist;
-                bestEnemy = e;
+                if (dist < bestEDist)
+                {
+                    bestEDist = dist;
+                    bestEnemy = e;
+                }
+            }
+            else
+            {
+                if (dist < bestTDist)
+                {
+                    bestTDist = dist;
+                    bestTeam = e;
+                }
             }
         }
         else
         {
-            if (dist < bestTDist)
+            // ffa mode - everyone is enemy
+            if (dist < bestEDist)
             {
-                bestTDist = dist;
-                bestTeam = e;
+                bestEDist = dist;
+                bestEnemy = e;
             }
         }
     }
@@ -407,8 +498,18 @@ function Think()
                     {
                         local ct = g_target[id].GetTeam();
                         local pt = p.GetTeam();
-                        if (ct != pt && ct > 1)
+                        local teamplay = DetectTeamplay();
+                        
+                        if (teamplay)
+                        {
+                            if (ct != pt && ct > 1)
+                                curEnemy = true;
+                        }
+                        else
+                        {
+                            // ffa - everyone is enemy
                             curEnemy = true;
+                        }
                     }
                     
                     local bestEnemy = false;
@@ -418,8 +519,18 @@ function Think()
                     {
                         local bt = best.GetTeam();
                         local pt = p.GetTeam();
-                        if (bt != pt && bt > 1)
+                        local teamplay = DetectTeamplay();
+                        
+                        if (teamplay)
+                        {
+                            if (bt != pt && bt > 1)
+                                bestEnemy = true;
+                        }
+                        else
+                        {
+                            // ffa - everyone is enemy
                             bestEnemy = true;
+                        }
                     }
                     
                     // switch to enemy if current isn't
@@ -458,8 +569,24 @@ function Think()
     EntFire("worldspawn", "CallScriptFunction", "Think", 0.015);
 }
 
+function OnGameEvent_player_say(params)
+{
+    local p = GetPlayerFromUserID(params.userid);
+    if (p == null)
+        return;
+    
+    local txt = params.text;
+    if (txt == "!aimbot" || txt == "/aimbot" || txt == "!picker" || txt == "/picker")
+        Toggle(p);
+    else if (txt == "!nexttarget" || txt == "/nexttarget")
+        NextTarget(p);
+}
+
 function OnGameEvent_round_start(params)
 {
+    // re-detect teamplay on round start
+    g_teamplay = null;
+    
     foreach (id, _ in g_enabled)
     {
         g_target[id] = null;
@@ -469,7 +596,14 @@ function OnGameEvent_round_start(params)
         g_targets[id] = [];
     }
     
-    EntFire("worldspawn", "RunScriptCode", "if(!(\"Think\" in this)) SendToConsole(\"script_execute aimbot.nut\")", 0.1);
+    // restart think loop
+    EntFire("worldspawn", "CallScriptFunction", "Think", 0.1);
+}
+
+function OnGameEvent_round_end(params)
+{
+    // keep script running through round end
+    EntFire("worldspawn", "CallScriptFunction", "Think", 0.1);
 }
 
 __CollectGameEventCallbacks(this);
