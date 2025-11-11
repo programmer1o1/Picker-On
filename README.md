@@ -26,7 +26,7 @@ picker_toggle - turn on/off
 picker_next - cycle through targets manually
 ```
 
-### Console commands for VScript
+### Console commands for SourceMod
 ```
 sm_giveaimbot - give aimbot to someone (why tho)
 sm_aimbot_distance - max distance for aimbot
